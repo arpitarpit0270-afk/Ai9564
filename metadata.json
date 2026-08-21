@@ -1,0 +1,7 @@
+{
+  "name": "Jarvis AI Assistant",
+  "description": "Full phone control Jarvis AI assistant powered by Gemini API to control WhatsApp, Instagram, YouTube, and phone system controls.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

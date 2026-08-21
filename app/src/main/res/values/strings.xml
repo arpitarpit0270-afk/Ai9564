@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Jarvis AI</string>
+    <string name="accessibility_service_label">J.A.R.V.I.S. Autonomous Automation &amp; Typer</string>
+    <string name="accessibility_service_description">Enables J.A.R.V.I.S. AI to perform universal auto-typing across all apps, automate gestures, execute global actions like Home, Back, Recents, Notifications, and manage full device control seamlessly.</string>
+</resources>
