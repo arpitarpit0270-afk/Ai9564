@@ -724,6 +724,20 @@ Please analyze the above screen content, identify the active app/page, explain t
         )
     }
 
+    fun clickAtCoordinates(x: Float, y: Float) {
+        executeDirectCommand(
+            JarvisCommand.AccessibilityClickCoords(x, y),
+            "Tapping screen coordinates ($x, $y), ${_assistantConfig.value.userTitle}."
+        )
+    }
+
+    fun scrollScreen(direction: String) {
+        executeDirectCommand(
+            JarvisCommand.AccessibilityScroll(direction),
+            "Scrolling $direction on active screen, ${_assistantConfig.value.userTitle}."
+        )
+    }
+
     fun triggerGlobalAction(action: JarvisAccessibilityService.GlobalActionType, label: String) {
         val cmd = when (action) {
             JarvisAccessibilityService.GlobalActionType.HOME -> JarvisCommand.GlobalHome
@@ -751,6 +765,8 @@ Please analyze the above screen content, identify the active app/page, explain t
             // Accessibility Actions
             is JarvisCommand.AccessibilityTypeText -> PhoneController.typeTextOnScreen(context, command.text)
             is JarvisCommand.AccessibilityClick -> PhoneController.clickOnScreenByText(context, command.targetText)
+            is JarvisCommand.AccessibilityClickCoords -> PhoneController.clickAtCoordinates(context, command.x, command.y)
+            is JarvisCommand.AccessibilityScroll -> PhoneController.performScroll(context, command.direction)
             is JarvisCommand.GlobalHome -> PhoneController.performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.HOME, "Home")
             is JarvisCommand.GlobalBack -> PhoneController.performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.BACK, "Back")
             is JarvisCommand.GlobalRecents -> PhoneController.performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.RECENTS, "Recent Apps")

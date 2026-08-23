@@ -1195,12 +1195,16 @@ fun ScreenAutomationDeck(
     isFloatingOverlayActive: Boolean,
     onTypeText: (String) -> Unit,
     onClickText: (String) -> Unit,
+    onClickCoords: (Float, Float) -> Unit = { _, _ -> },
+    onScrollScreen: (String) -> Unit = {},
     onGlobalAction: (JarvisAccessibilityService.GlobalActionType, String) -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onToggleFloatingOverlay: () -> Unit
 ) {
     var textToType by remember { mutableStateOf("") }
     var elementToClick by remember { mutableStateOf("") }
+    var coordX by remember { mutableStateOf("540") }
+    var coordY by remember { mutableStateOf("1200") }
 
     val quickPhrases = listOf(
         "Main raste mein hoon.",
@@ -1506,6 +1510,109 @@ fun ScreenAutomationDeck(
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
                             ) {
                                 Text(text = "Tap \"$target\"", color = JarvisStarkGold, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 2.5: Coordinate Tap & Screen Scrolling
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = JarvisDarkSurface),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisBorderCyan)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.TouchApp, contentDescription = null, tint = JarvisCyanBright)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "PRECISE COORDINATE TAP & SCROLL",
+                            color = JarvisCyanBright,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Text(
+                        text = "Tap any (X, Y) pixel on screen or perform directional swipes",
+                        color = TextSecondary,
+                        fontSize = 10.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = coordX,
+                            onValueChange = { coordX = it },
+                            label = { Text("X (px)", fontSize = 10.sp) },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = JarvisCyanBright,
+                                unfocusedBorderColor = JarvisBorderGlow,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = coordY,
+                            onValueChange = { coordY = it },
+                            label = { Text("Y (px)", fontSize = 10.sp) },
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = JarvisCyanBright,
+                                unfocusedBorderColor = JarvisBorderGlow,
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary
+                            ),
+                            singleLine = true
+                        )
+
+                        Button(
+                            onClick = {
+                                val x = coordX.toFloatOrNull() ?: 540f
+                                val y = coordY.toFloatOrNull() ?: 1200f
+                                onClickCoords(x, y)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = JarvisCyanBright),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Tap", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = "Swipe / Scroll Screen:",
+                        color = JarvisCyanDim,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("down" to "⬇️ Down", "up" to "⬆️ Up", "left" to "⬅️ Left", "right" to "➡️ Right").forEach { (dir, label) ->
+                            Button(
+                                onClick = { onScrollScreen(dir) },
+                                colors = ButtonDefaults.buttonColors(containerColor = JarvisDarkSurfaceVariant),
+                                modifier = Modifier.weight(1f).border(1.dp, JarvisBorderCyan, RoundedCornerShape(6.dp)),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Text(label, fontSize = 9.sp, color = TextPrimary, maxLines = 1)
                             }
                         }
                     }

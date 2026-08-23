@@ -41,11 +41,30 @@ class MainActivity : ComponentActivity() {
 
     private fun checkAndRequestPermissions() {
         val permissionsToRequest = mutableListOf<String>()
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        val allRequired = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
+            Manifest.permission.CALL_PHONE,
+            Manifest.permission.READ_PHONE_STATE,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            allRequired.add(Manifest.permission.POST_NOTIFICATIONS)
+            allRequired.add(Manifest.permission.READ_MEDIA_IMAGES)
+            allRequired.add(Manifest.permission.READ_MEDIA_VIDEO)
+            allRequired.add(Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            allRequired.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            allRequired.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            permissionsToRequest.add(Manifest.permission.CAMERA)
+
+        for (perm in allRequired) {
+            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                permissionsToRequest.add(perm)
+            }
         }
 
         if (permissionsToRequest.isNotEmpty()) {

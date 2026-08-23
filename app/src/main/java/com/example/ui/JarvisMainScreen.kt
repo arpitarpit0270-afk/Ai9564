@@ -105,6 +105,7 @@ import com.example.ui.components.ArcReactorCore
 import com.example.ui.components.CharacterVoiceDeck
 import com.example.ui.components.HardwareToolsDeck
 import com.example.ui.components.LiveCameraVisionHud
+import com.example.ui.components.PermissionsHubDeck
 import com.example.ui.components.ScreenAutomationDeck
 import com.example.ui.components.StarkSecurityLockScreen
 import com.example.ui.components.SystemDiagnosticsDeck
@@ -304,8 +305,8 @@ fun JarvisMainScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Navigation Tabs (6 Modules)
-            val tabs = listOf("⚡ Core", "🎭 Voice & Nature", "📱 Screen & Typer", "⚙️ APIs Hub", "🌐 Apps", "🛠 Tools")
+            // Navigation Tabs (7 Modules)
+            val tabs = listOf("⚡ Core", "🎭 Voice & Nature", "📱 Screen & Typer", "⚙️ APIs Hub", "🛡️ Permissions", "🌐 Apps", "🛠 Tools")
             ScrollableTabRow(
                 selectedTabIndex = activeTab,
                 containerColor = JarvisDarkSurfaceVariant,
@@ -373,6 +374,8 @@ fun JarvisMainScreen(
                         isFloatingOverlayActive = isFloatingOverlayActive,
                         onTypeText = { text -> viewModel.typeTextAnywhere(text) },
                         onClickText = { target -> viewModel.clickOnScreenText(target) },
+                        onClickCoords = { x, y -> viewModel.clickAtCoordinates(x, y) },
+                        onScrollScreen = { dir -> viewModel.scrollScreen(dir) },
                         onGlobalAction = { action, label -> viewModel.triggerGlobalAction(action, label) },
                         onOpenAccessibilitySettings = { viewModel.openAccessibilitySettings() },
                         onToggleFloatingOverlay = { viewModel.toggleFloatingOverlay() }
@@ -388,10 +391,11 @@ fun JarvisMainScreen(
                         onUpdateOpenRouter = { key, model -> viewModel.updateOpenRouterConfig(key, model) },
                         onUpdateCustomEndpoint = { baseUrl, key, model -> viewModel.updateCustomEndpointConfig(baseUrl, key, model) }
                     )
-                    4 -> AppsControlHub(
+                    4 -> PermissionsHubDeck()
+                    5 -> AppsControlHub(
                         onCommand = { cmd, note -> viewModel.executeDirectCommand(cmd, note) }
                     )
-                    5 -> HardwareToolsDeck(
+                    6 -> HardwareToolsDeck(
                         isFlashlightOn = isFlashlightOn,
                         onCommand = { cmd, note -> viewModel.executeDirectCommand(cmd, note) }
                     )

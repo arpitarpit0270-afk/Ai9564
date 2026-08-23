@@ -128,12 +128,14 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     /**
-     * Finds a clickable node matching specified text and performs click.
+     * Finds a clickable node matching specified text or content description and performs click.
      */
     fun clickNodeByText(targetText: String): Boolean {
         val rootNode = rootInActiveWindow ?: return false
-        val matchedNodes = rootNode.findAccessibilityNodeInfosByText(targetText)
+        val cleanTarget = targetText.trim()
 
+        // 1. Try exact search via system method
+        val matchedNodes = rootNode.findAccessibilityNodeInfosByText(cleanTarget)
         if (!matchedNodes.isNullOrEmpty()) {
             for (node in matchedNodes) {
                 var current: AccessibilityNodeInfo? = node
@@ -143,13 +145,88 @@ class JarvisAccessibilityService : AccessibilityService() {
                         rootNode.recycle()
                         return clicked
                     }
-                    val parent = current.parent
-                    current = parent
+                    current = current.parent
                 }
             }
         }
+
+        // 2. Deep recursive fuzzy search across all text, contentDescription, hintText & view IDs
+        val fuzzyMatch = findNodeFuzzy(rootNode, cleanTarget)
+        if (fuzzyMatch != null) {
+            var current: AccessibilityNodeInfo? = fuzzyMatch
+            while (current != null) {
+                if (current.isClickable) {
+                    val clicked = current.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    rootNode.recycle()
+                    return clicked
+                }
+                current = current.parent
+            }
+            // If parent not clickable, try clicking node directly anyway
+            val clicked = fuzzyMatch.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            fuzzyMatch.recycle()
+            rootNode.recycle()
+            return clicked
+        }
+
         rootNode.recycle()
         return false
+    }
+
+    private fun findNodeFuzzy(node: AccessibilityNodeInfo?, target: String): AccessibilityNodeInfo? {
+        if (node == null) return null
+        val lowerTarget = target.lowercase()
+
+        val text = node.text?.toString()?.lowercase()
+        val desc = node.contentDescription?.toString()?.lowercase()
+        val viewId = node.viewIdResourceName?.lowercase()
+
+        if (text?.contains(lowerTarget) == true || desc?.contains(lowerTarget) == true || viewId?.contains(lowerTarget) == true) {
+            return node
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = findNodeFuzzy(child, target)
+            if (found != null) {
+                return found
+            }
+            child.recycle()
+        }
+        return null
+    }
+
+    /**
+     * Taps at specific screen coordinates (X, Y) using Accessibility Gestures.
+     */
+    fun clickAtCoordinates(x: Float, y: Float): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val path = android.graphics.Path().apply {
+            moveTo(x, y)
+        }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, 50)
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(stroke)
+            .build()
+
+        return dispatchGesture(gesture, null, null)
+    }
+
+    /**
+     * Performs a scroll/swipe gesture from (startX, startY) to (endX, endY).
+     */
+    fun performSwipe(startX: Float, startY: Float, endX: Float, endY: Float, durationMs: Long = 300): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
+        val path = android.graphics.Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = android.accessibilityservice.GestureDescription.StrokeDescription(path, 0, durationMs)
+        val gesture = android.accessibilityservice.GestureDescription.Builder()
+            .addStroke(stroke)
+            .build()
+
+        return dispatchGesture(gesture, null, null)
     }
 
     /**

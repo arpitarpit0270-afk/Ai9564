@@ -13,9 +13,11 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 sealed class JarvisCommand {
-    // Accessibility Universal Typing & Clicking
+    // Accessibility Universal Typing & Clicking & Gestures
     data class AccessibilityTypeText(val text: String) : JarvisCommand()
     data class AccessibilityClick(val targetText: String) : JarvisCommand()
+    data class AccessibilityClickCoords(val x: Float, val y: Float) : JarvisCommand()
+    data class AccessibilityScroll(val direction: String) : JarvisCommand()
     object GlobalHome : JarvisCommand()
     object GlobalBack : JarvisCommand()
     object GlobalRecents : JarvisCommand()
@@ -100,20 +102,26 @@ object GeminiJarvisService {
         }
 
         return """
-You are $name, an autonomous AI assistant with full Android phone control, universal screen auto-typing, and device automation.
+You are $name, an autonomous AI assistant with full Android phone control, universal screen auto-typing, live screen & camera perception, and device automation.
 Address the user as '$title'.
 Assistant Personality & Tone: $naturePrompt
 
-Language & Intelligence:
-You understand English, Hindi, and Hinglish fluently (e.g., "type karo", "likh do", "home screen pe jao", "back jao", "notification kholo", "screenshot lo", "phone lock karo", "whatsapp pe message bhejo", "torch jalao", "gaana chalao", "kya haal hai").
+Language & Conversational Intelligence:
+You understand English, Hindi, and Hinglish fluently (e.g., "type karo", "likh do", "home screen pe jao", "back jao", "notification kholo", "screenshot lo", "phone lock karo", "whatsapp pe message bhejo", "torch jalao", "gaana chalao", "kya haal hai", "screen pe click karo", "screen dekho", "live camera scanner kholo").
 
-CRITICAL PHONE AUTOMATION & AUTO-TYPING INSTRUCTION:
-Whenever the user requests an action (typing, clicking, navigating, opening apps, hardware control), you MUST prepend an ACTION tag at the very beginning of your response in the exact format:
-[ACTION:COMMAND_TYPE:PARAMETERS]
+CRITICAL DIRECT CONVERSATION & KNOWLEDGE RULE:
+1. When the user asks questions, seeks advice, engages in dialogue, asks for coding help, math, science, translation, or general information (in Hindi, English, or Hinglish):
+   - ALWAYS ANSWER DIRECTLY and conversationally using your internal deep AI knowledge!
+   - NEVER open Google Search ([ACTION:GOOGLE_SEARCH:]) unless the user explicitly commands: "search this on Google" or "Google par search karo".
+2. When the user asks to perform an action on their phone, prepend the exact [ACTION:...] tag.
 
 List of Valid ACTION Tags:
-- [ACTION:TYPE_TEXT:TEXT_TO_TYPE] (For typing into whatever app or input box is active on screen)
-- [ACTION:CLICK_VIEW:TARGET_BUTTON_OR_TEXT] (For clicking buttons/links on screen like 'Send', 'Search', 'Submit', 'Login')
+- [ACTION:TYPE_TEXT:TEXT_TO_TYPE] (Types into whatever app or input box is active on screen)
+- [ACTION:CLICK_VIEW:TARGET_BUTTON_OR_TEXT] (Clicks button/view on screen by text or ID, e.g. 'Send', 'Search', 'Submit', 'Login', 'Follow')
+- [ACTION:CLICK_COORDS:X|Y] (Taps exact coordinate on screen, e.g. 500|1000)
+- [ACTION:SCROLL:DIRECTION] (down, up, left, right)
+- [ACTION:ANALYZE_SCREEN:PROMPT] (Dumps and analyzes what is currently displayed on device screen)
+- [ACTION:LIVE_VISION:] (Opens live camera optical HUD scanner)
 - [ACTION:GLOBAL_HOME:] (Press Home)
 - [ACTION:GLOBAL_BACK:] (Press Back)
 - [ACTION:GLOBAL_RECENTS:] (Open Recent Apps Overview)
@@ -153,11 +161,11 @@ List of Valid ACTION Tags:
 - [ACTION:TIMER:SECONDS|LABEL]
 - [ACTION:SETTINGS:TYPE] (wifi, bluetooth, sound, display, battery, apps, accessibility, main)
 - [ACTION:MAPS:DESTINATION_NAME]
-- [ACTION:GOOGLE_SEARCH:QUERY]
+- [ACTION:GOOGLE_SEARCH:QUERY] (ONLY when explicitly instructed to search on google)
 - [ACTION:CALCULATOR:]
 - [ACTION:BATTERY:]
 - [ACTION:TELEMETRY:]
-- [ACTION:CREATE_FILE:FILE_NAME|FILE_CONTENT] (Creates a file directly on the user's device and writes the code/content into it)
+- [ACTION:CREATE_FILE:FILE_NAME|FILE_CONTENT] (Creates a file directly on user's device and writes the code/content into it)
 - [ACTION:NONE:]
 
 If the user asks to create a file or generate code for a file, use the [ACTION:CREATE_FILE:fileName|code_content] tag so it is saved directly to their phone.
@@ -570,6 +578,12 @@ After the action tag, provide your natural, engaging, and in-character response.
             }
             "TYPE_TEXT" -> JarvisCommand.AccessibilityTypeText(params.ifBlank { prompt })
             "CLICK_VIEW" -> JarvisCommand.AccessibilityClick(params.ifBlank { "Send" })
+            "CLICK_COORDS" -> {
+                val x = parts.getOrNull(0)?.trim()?.toFloatOrNull() ?: 500f
+                val y = parts.getOrNull(1)?.trim()?.toFloatOrNull() ?: 1000f
+                JarvisCommand.AccessibilityClickCoords(x, y)
+            }
+            "SCROLL" -> JarvisCommand.AccessibilityScroll(params.ifBlank { "down" })
             "GLOBAL_HOME" -> JarvisCommand.GlobalHome
             "GLOBAL_BACK" -> JarvisCommand.GlobalBack
             "GLOBAL_RECENTS" -> JarvisCommand.GlobalRecents
@@ -684,9 +698,31 @@ if __name__ == "__main__":
                 JarvisResponse("Injecting text \"$targetText\" into active screen input field, $title.", JarvisCommand.AccessibilityTypeText(targetText), false, "Instant Local Engine")
             }
 
-            // Click on Screen Button
-            lower.startsWith("click ") || lower.startsWith("press ") || lower.contains("click karo") || lower.contains("button dabao") || lower.contains("daba do") -> {
-                val target = text.replace(Regex("""(?i)(click karo|click on|click|press|button|dabao|daba do|pe|par)"""), "").trim()
+            // Coordinate Tap on Screen ("click at 500 1000", "tap at 300, 400", "yahan tap karo 500 800")
+            Regex("""(?i)(click|tap)\s+(at\s+)?(\d+)[,\s]+(\d+)""").containsMatchIn(text) -> {
+                val match = Regex("""(?i)(click|tap)\s+(at\s+)?(\d+)[,\s]+(\d+)""").find(text)
+                val x = match?.groupValues?.getOrNull(3)?.toFloatOrNull() ?: 500f
+                val y = match?.groupValues?.getOrNull(4)?.toFloatOrNull() ?: 1000f
+                JarvisResponse("Tapping screen at coordinates ($x, $y), $title.", JarvisCommand.AccessibilityClickCoords(x, y), false, "Instant Local Engine")
+            }
+
+            // Scroll on Screen ("scroll down", "scroll up", "niche scroll", "upar scroll", "swipe down")
+            lower.contains("scroll down") || lower.contains("swipe down") || lower.contains("niche scroll") || lower.contains("neeche scroll") -> {
+                JarvisResponse("Scrolling down on active screen, $title.", JarvisCommand.AccessibilityScroll("down"), false, "Instant Local Engine")
+            }
+            lower.contains("scroll up") || lower.contains("swipe up") || lower.contains("upar scroll") -> {
+                JarvisResponse("Scrolling up on active screen, $title.", JarvisCommand.AccessibilityScroll("up"), false, "Instant Local Engine")
+            }
+            lower.contains("scroll left") || lower.contains("swipe left") || lower.contains("left scroll") -> {
+                JarvisResponse("Scrolling left on screen, $title.", JarvisCommand.AccessibilityScroll("left"), false, "Instant Local Engine")
+            }
+            lower.contains("scroll right") || lower.contains("swipe right") || lower.contains("right scroll") -> {
+                JarvisResponse("Scrolling right on screen, $title.", JarvisCommand.AccessibilityScroll("right"), false, "Instant Local Engine")
+            }
+
+            // Click on Screen Button / Text
+            lower.startsWith("click ") || lower.startsWith("press ") || lower.contains("click karo") || lower.contains("button dabao") || lower.contains("daba do") || lower.contains("pe tap karo") || lower.contains("par tap karo") -> {
+                val target = text.replace(Regex("""(?i)(click karo|click on|click|press|button|dabao|daba do|pe tap karo|par tap karo|tap on|tap|pe|par)"""), "").trim()
                 JarvisResponse("Executing on-screen tap on \"${target.ifBlank { "element" }}\", $title.", JarvisCommand.AccessibilityClick(target.ifBlank { "Send" }), false, "Instant Local Engine")
             }
 
@@ -872,9 +908,9 @@ if __name__ == "__main__":
             lower.contains("calculate") || lower.contains("calculator") || lower.contains("math") || lower.contains("hisaab") -> {
                 JarvisResponse("Engaging computational matrix, $title.", JarvisCommand.OpenCalculator, false, "Instant Local Engine")
             }
-            lower.startsWith("search ") || lower.startsWith("google ") || lower.contains("who is ") || lower.contains("what is ") || lower.contains("kya hai") || lower.contains("kaun hai") -> {
-                val query = text.replace(Regex("""(?i)(search|google|for|online|kya hai|kaun hai)"""), "").trim()
-                JarvisResponse("Querying global data stream for \"$query\", $title.", JarvisCommand.SearchGoogle(query), false, "Instant Local Engine")
+            lower.startsWith("google search ") || lower.startsWith("search on google ") || lower.startsWith("google par search ") || lower.startsWith("search google ") -> {
+                val query = text.replace(Regex("""(?i)(search on google|google par search|google search|search google|for)"""), "").trim()
+                JarvisResponse("Querying Google search engine for \"$query\", $title.", JarvisCommand.SearchGoogle(query), false, "Instant Local Engine")
             }
 
             // Battery & Telemetry

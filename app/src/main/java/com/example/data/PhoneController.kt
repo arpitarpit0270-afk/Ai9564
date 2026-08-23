@@ -129,6 +129,54 @@ object PhoneController {
         }
     }
 
+    fun clickAtCoordinates(context: Context, x: Float, y: Float): ActionResult {
+        val service = JarvisAccessibilityService.instance
+        return if (service != null) {
+            val clicked = service.clickAtCoordinates(x, y)
+            if (clicked) {
+                ActionResult(success = true, message = "Tapped at coordinates ($x, $y) on screen.")
+            } else {
+                ActionResult(success = false, message = "Could not execute tap at ($x, $y).")
+            }
+        } else {
+            openAccessibilitySettings(context)
+            ActionResult(
+                success = false,
+                message = "Accessibility permission required for coordinate clicking. Please grant permission in settings."
+            )
+        }
+    }
+
+    fun performScroll(context: Context, direction: String): ActionResult {
+        val service = JarvisAccessibilityService.instance
+        return if (service != null) {
+            val displayMetrics = context.resources.displayMetrics
+            val width = displayMetrics.widthPixels.toFloat()
+            val height = displayMetrics.heightPixels.toFloat()
+            val midX = width / 2
+            val midY = height / 2
+
+            val success = when (direction.lowercase()) {
+                "down", "scroll down" -> service.performSwipe(midX, midY + 400f, midX, midY - 400f)
+                "up", "scroll up" -> service.performSwipe(midX, midY - 400f, midX, midY + 400f)
+                "left", "scroll left" -> service.performSwipe(midX + 300f, midY, midX - 300f, midY)
+                "right", "scroll right" -> service.performSwipe(midX - 300f, midY, midX + 300f, midY)
+                else -> service.performSwipe(midX, midY + 400f, midX, midY - 400f)
+            }
+            if (success) {
+                ActionResult(success = true, message = "Scrolled $direction on screen, sir.")
+            } else {
+                ActionResult(success = false, message = "Could not perform scroll gesture.")
+            }
+        } else {
+            openAccessibilitySettings(context)
+            ActionResult(
+                success = false,
+                message = "Accessibility permission required for scrolling."
+            )
+        }
+    }
+
     fun performGlobalAction(context: Context, action: JarvisAccessibilityService.GlobalActionType, actionLabel: String): ActionResult {
         val service = JarvisAccessibilityService.instance
         return if (service != null) {
@@ -744,6 +792,76 @@ object PhoneController {
             storageAvailableGB = String.format("%.1f", storageAvailGB),
             storageTotalGB = String.format("%.1f", storageTotalGB)
         )
+    }
+
+    fun executeJarvisCommand(context: Context, command: JarvisCommand): ActionResult {
+        return when (command) {
+            // Accessibility Actions
+            is JarvisCommand.AccessibilityTypeText -> typeTextOnScreen(context, command.text)
+            is JarvisCommand.AccessibilityClick -> clickOnScreenByText(context, command.targetText)
+            is JarvisCommand.AccessibilityClickCoords -> clickAtCoordinates(context, command.x, command.y)
+            is JarvisCommand.AccessibilityScroll -> performScroll(context, command.direction)
+            is JarvisCommand.GlobalHome -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.HOME, "Home")
+            is JarvisCommand.GlobalBack -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.BACK, "Back")
+            is JarvisCommand.GlobalRecents -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.RECENTS, "Recent Apps")
+            is JarvisCommand.GlobalNotifications -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.NOTIFICATIONS, "Notifications")
+            is JarvisCommand.GlobalQuickSettings -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.QUICK_SETTINGS, "Quick Settings")
+            is JarvisCommand.GlobalLockScreen -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.LOCK_SCREEN, "Lock Screen")
+            is JarvisCommand.GlobalScreenshot -> performGlobalAction(context, JarvisAccessibilityService.GlobalActionType.TAKE_SCREENSHOT, "Screenshot")
+            is JarvisCommand.OpenAccessibilitySettings -> openAccessibilitySettings(context)
+
+            // App & Comms
+            is JarvisCommand.OpenWhatsApp -> openWhatsApp(context)
+            is JarvisCommand.SendWhatsAppMsg -> sendWhatsAppMessage(context, command.phone, command.message)
+            is JarvisCommand.OpenWhatsAppStatus -> openWhatsAppStatus(context)
+            is JarvisCommand.OpenTelegram -> openTelegram(context)
+            is JarvisCommand.SendTelegramMsg -> sendTelegramMessage(context, command.username)
+            is JarvisCommand.OpenSpotify -> openSpotify(context)
+            is JarvisCommand.PlaySpotify -> searchSpotify(context, command.query)
+            is JarvisCommand.OpenTwitter -> openTwitter(context)
+            is JarvisCommand.OpenInstagram -> openInstagram(context)
+            is JarvisCommand.OpenInstagramReels -> openInstagramReels(context)
+            is JarvisCommand.OpenInstagramDirect -> openInstagramDirect(context)
+            is JarvisCommand.OpenInstagramProfile -> openInstagramProfile(context, command.username)
+            is JarvisCommand.OpenInstagramStoryCamera -> openInstagramStoryCamera(context)
+            is JarvisCommand.OpenNetflix -> openNetflix(context)
+            is JarvisCommand.OpenWebUrl -> openBrowserUrl(context, command.url)
+            is JarvisCommand.OpenYouTube -> openYouTube(context)
+            is JarvisCommand.SearchYouTube -> searchYouTube(context, command.query)
+            is JarvisCommand.PlayYouTube -> playYouTubeVideo(context, command.query)
+            is JarvisCommand.OpenYouTubeTrending -> openYouTubeTrending(context)
+
+            // Hardware & Utility
+            is JarvisCommand.Flashlight -> toggleFlashlight(context, command.state)
+            is JarvisCommand.OpenCamera -> openCamera(context, false)
+            is JarvisCommand.RecordVideo -> openCamera(context, true)
+            is JarvisCommand.CallPhone -> makePhoneCall(context, command.number)
+            is JarvisCommand.SendSms -> sendSms(context, command.number, command.message)
+            is JarvisCommand.OpenContacts -> openContacts(context)
+            is JarvisCommand.SetAlarm -> setAlarm(context, command.hour, command.minute, command.label)
+            is JarvisCommand.SetTimer -> setTimer(context, command.seconds, command.label)
+            is JarvisCommand.OpenSettings -> openSettings(context, command.type)
+            is JarvisCommand.OpenMaps -> openMaps(context, command.destination)
+            is JarvisCommand.SearchGoogle -> searchGoogle(context, command.query)
+            is JarvisCommand.OpenCalculator -> openCalculator(context)
+            is JarvisCommand.CreateDeviceFile -> {
+                val fileRes = JarvisDeviceFileManager.createDeviceFile(context, command.fileName, command.content)
+                if (fileRes.success) {
+                    ActionResult(true, "File \"${command.fileName}\" created at ${fileRes.filePath}.")
+                } else {
+                    ActionResult(false, "Failed to create file: ${fileRes.errorMessage}")
+                }
+            }
+            is JarvisCommand.BatteryStatus -> {
+                val battery = getBatteryTelemetry(context)
+                ActionResult(true, "Battery level is at ${battery.percentage}%, ${if (battery.isCharging) "charging" else "discharging"}.")
+            }
+            is JarvisCommand.DeviceTelemetryReport -> {
+                val telem = getDeviceTelemetry(context)
+                ActionResult(true, "Device ${telem.deviceModel}, RAM: ${telem.memoryUsedMB}MB / ${telem.memoryMaxMB}MB.")
+            }
+            else -> ActionResult(true, "Command acknowledged.")
+        }
     }
 }
 
