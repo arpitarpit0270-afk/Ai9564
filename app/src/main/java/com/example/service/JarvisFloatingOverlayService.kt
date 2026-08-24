@@ -19,16 +19,16 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
 import com.example.data.AiEngineType
-import com.example.data.AiNatureType
 import com.example.data.AssistantConfig
 import com.example.data.CharacterPreset
 import com.example.data.GeminiJarvisService
@@ -48,19 +48,31 @@ class JarvisFloatingOverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var floatingView: View? = null
     private var speechManager: JarvisSpeechManager? = null
+    private var wakeWordEngine: com.example.data.JarvisWakeWordEngine? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     private var isExpanded = true
+    private var touchSlop = 0
+
+    companion object {
+        var isRunning = false
+            private set
+
+        fun isFloatingOverlayRunning(): Boolean = isRunning
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        touchSlop = ViewConfiguration.get(this).scaledTouchSlop
         speechManager = JarvisSpeechManager(this)
+        wakeWordEngine = com.example.data.JarvisWakeWordEngine.getInstance(this)
         startForegroundNotification()
         setupFloatingView()
+        setupBackgroundWakeWord()
     }
 
     private fun startForegroundNotification() {
@@ -84,8 +96,8 @@ class JarvisFloatingOverlayService : Service() {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("J.A.R.V.I.S. Background Engine Active")
-            .setContentText("Autonomous floating HUD & instant voice responder online")
+            .setContentTitle("J.A.R.V.I.S. Floating Assistant Active")
+            .setContentText("Tap overlay for English/Hindi conversation & phone automation")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -95,33 +107,20 @@ class JarvisFloatingOverlayService : Service() {
     }
 
     private fun getStoredApiConfig(): MultiApiConfig {
-        val prefs = getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("jarvis_ai_prefs", Context.MODE_PRIVATE)
         return MultiApiConfig(
             selectedEngine = try {
-                AiEngineType.valueOf(prefs.getString("selected_ai_engine", AiEngineType.AUTO_HYBRID.name) ?: AiEngineType.AUTO_HYBRID.name)
+                AiEngineType.valueOf(prefs.getString("selected_ai_engine", AiEngineType.GEMINI_FREE.name) ?: AiEngineType.GEMINI_FREE.name)
             } catch (_: Exception) {
-                AiEngineType.AUTO_HYBRID
+                AiEngineType.GEMINI_FREE
             },
             geminiApiKey = prefs.getString("gemini_api_key", "") ?: "",
-            geminiModel = prefs.getString("gemini_model", "gemini-2.5-flash") ?: "gemini-2.5-flash",
-            openAiApiKey = prefs.getString("openai_api_key", "") ?: "",
-            openAiModel = prefs.getString("openai_model", "gpt-4o-mini") ?: "gpt-4o-mini",
-            groqApiKey = prefs.getString("groq_api_key", "") ?: "",
-            groqModel = prefs.getString("groq_model", "llama-3.3-70b-versatile") ?: "llama-3.3-70b-versatile",
-            deepSeekApiKey = prefs.getString("deepseek_api_key", "") ?: "",
-            deepSeekModel = prefs.getString("deepseek_model", "deepseek-chat") ?: "deepseek-chat",
-            claudeApiKey = prefs.getString("claude_api_key", "") ?: "",
-            claudeModel = prefs.getString("claude_model", "claude-3-5-sonnet-20241022") ?: "claude-3-5-sonnet-20241022",
-            openRouterApiKey = prefs.getString("openrouter_api_key", "") ?: "",
-            openRouterModel = prefs.getString("openrouter_model", "google/gemini-2.0-flash-exp:free") ?: "google/gemini-2.0-flash-exp:free",
-            customApiBaseUrl = prefs.getString("custom_api_base_url", "https://api.openai.com/v1") ?: "https://api.openai.com/v1",
-            customApiKey = prefs.getString("custom_api_key", "") ?: "",
-            customModelName = prefs.getString("custom_model_name", "gpt-4o-mini") ?: "gpt-4o-mini"
+            geminiModel = prefs.getString("gemini_model", "gemini-2.5-flash") ?: "gemini-2.5-flash"
         )
     }
 
     private fun getStoredAssistantConfig(): AssistantConfig {
-        val prefs = getSharedPreferences("jarvis_prefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("jarvis_ai_prefs", Context.MODE_PRIVATE)
         return AssistantConfig(
             name = prefs.getString("assistant_name", "J.A.R.V.I.S.") ?: "J.A.R.V.I.S.",
             userTitle = prefs.getString("user_title", "sir") ?: "sir",
@@ -130,16 +129,9 @@ class JarvisFloatingOverlayService : Service() {
             } catch (_: Exception) {
                 CharacterPreset.JARVIS
             },
-            nature = try {
-                AiNatureType.valueOf(prefs.getString("nature_type", AiNatureType.LOYAL_BUTLER.name) ?: AiNatureType.LOYAL_BUTLER.name)
-            } catch (_: Exception) {
-                AiNatureType.LOYAL_BUTLER
-            },
-            customNaturePrompt = prefs.getString("custom_nature_prompt", "") ?: "",
             wakeWord = prefs.getString("wake_word", "Jarvis") ?: "Jarvis",
             isWakeWordEnabled = prefs.getBoolean("wake_word_enabled", true),
-            isContinuousMode = prefs.getBoolean("continuous_mode_enabled", true),
-            isBargeInEnabled = prefs.getBoolean("barge_in_enabled", true)
+            isContinuousMode = prefs.getBoolean("continuous_mode_enabled", true)
         )
     }
 
@@ -162,92 +154,145 @@ class JarvisFloatingOverlayService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = 24
-            y = 260
+            y = 200
         }
 
-        // Main HUD container with dark sci-fi border background
-        val containerBg = GradientDrawable().apply {
+        // Root container holds both the Mini Badge and the Expanded HUD Deck
+        val rootLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        // ============================================================
+        // 1. MINI FLOATING ARC REACTOR BADGE (When Collapsed)
+        // ============================================================
+        val miniBadgeBg = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(0xF0071322.toInt())
+            setStroke(dpToPx(2), 0xFF00F0FF.toInt())
+        }
+
+        val miniBadge = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = miniBadgeBg
+            val pad = dpToPx(12)
+            setPadding(pad, pad, pad, pad)
+            visibility = View.GONE
+        }
+
+        val miniIcon = TextView(this).apply {
+            text = "⚡"
+            textSize = 22f
+            setTextColor(0xFF00F0FF.toInt())
+        }
+        miniBadge.addView(miniIcon)
+
+        // ============================================================
+        // 2. EXPANDED HOLOGRAPHIC HUD DECK (When Expanded)
+        // ============================================================
+        val hudBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dpToPx(16).toFloat()
-            setColor(0xF00A111E.toInt())
+            setColor(0xF2060F1E.toInt())
             setStroke(dpToPx(1), 0xFF00F0FF.toInt())
         }
 
-        val container = LinearLayout(this).apply {
+        val hudDeck = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = containerBg
-            setPadding(dpToPx(8), dpToPx(8), dpToPx(8), dpToPx(8))
+            background = hudBg
+            val pad = dpToPx(10)
+            setPadding(pad, pad, pad, pad)
+            visibility = View.VISIBLE
         }
 
-        // 1. Header Drag & Status Row
+        // Header Row (Draggable title bar + Status)
         val headerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(4))
+            setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(6))
         }
 
         val reactorIcon = TextView(this).apply {
             text = "⚡"
-            textSize = 20f
+            textSize = 18f
             setTextColor(0xFF00F0FF.toInt())
-            setPadding(dpToPx(2), dpToPx(2), dpToPx(6), dpToPx(2))
+            setPadding(0, 0, dpToPx(6), 0)
         }
 
         val statusText = TextView(this).apply {
-            text = "JARVIS // ONLINE"
+            tag = "status_text"
+            text = "JARVIS AI // ONLINE"
             textSize = 11f
             setTextColor(0xFF00F0FF.toInt())
             typeface = android.graphics.Typeface.MONOSPACE
             setPadding(0, 0, dpToPx(8), 0)
         }
 
-        val minMaxBtn = TextView(this).apply {
-            text = "◀▶"
-            textSize = 10f
-            setTextColor(0xFF00A3FF.toInt())
+        val minimizeBtn = TextView(this).apply {
+            text = " ➖ "
+            textSize = 12f
+            setTextColor(0xFF80D8FF.toInt())
+            setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
+        }
+
+        val closeBtnTop = TextView(this).apply {
+            text = " ✕ "
+            textSize = 12f
+            setTextColor(0xFFFF5252.toInt())
             setPadding(dpToPx(4), dpToPx(2), dpToPx(4), dpToPx(2))
         }
 
         headerRow.addView(reactorIcon)
-        headerRow.addView(statusText)
-        headerRow.addView(minMaxBtn)
-        container.addView(headerRow)
+        headerRow.addView(statusText, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        headerRow.addView(minimizeBtn)
+        headerRow.addView(closeBtnTop)
+        hudDeck.addView(headerRow)
 
-        // 2. Expandable Action Strip
-        val actionStrip = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            visibility = View.VISIBLE
-            setPadding(0, dpToPx(4), 0, 0)
+        // Response Dialogue Card (Shows Gemini Text Answer On Screen)
+        val responseCardBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dpToPx(10).toFloat()
+            setColor(0xFF0A182E.toInt())
+            setStroke(dpToPx(1), 0x6600F0FF.toInt())
         }
 
-        val row1 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+        val responseScrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(280), LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dpToPx(8)
+            }
+            background = responseCardBg
+            val p = dpToPx(8)
+            setPadding(p, p, p, p)
         }
 
-        val row2 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dpToPx(4), 0, 0)
+        val responseText = TextView(this).apply {
+            tag = "response_text"
+            text = "Ask me anything in English or Hindi, or tap Voice to speak!"
+            textSize = 11f
+            setTextColor(0xFFE0F7FA.toInt())
+            setLineSpacing(2f, 1.15f)
         }
+        responseScrollView.addView(responseText)
+        hudDeck.addView(responseScrollView)
 
-        fun createPillButton(text: String, bgColor: Int = 0xFF102A45.toInt(), onClick: () -> Unit): Button {
-            val btnBg = GradientDrawable().apply {
+        // Button Helper
+        fun createPillButton(label: String, bgColor: Int = 0xFF102845.toInt(), strokeColor: Int = 0xFF00F0FF.toInt(), onClick: () -> Unit): Button {
+            val bg = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dpToPx(8).toFloat()
                 setColor(bgColor)
-                setStroke(dpToPx(1), 0xFF00F0FF.toInt())
+                setStroke(dpToPx(1), strokeColor)
             }
             return Button(this).apply {
-                this.text = text
+                text = label
                 textSize = 10f
                 setTextColor(Color.WHITE)
-                background = btnBg
+                background = bg
                 val padH = dpToPx(8)
                 val padV = dpToPx(4)
                 setPadding(padH, padV, padH, padV)
@@ -259,26 +304,29 @@ class JarvisFloatingOverlayService : Service() {
             }
         }
 
-        // Voice Command execution with ultra-low latency
-        fun processFloatingSpeechInput(query: String) {
-            statusText.text = "🤖 Thinking..."
+        // AI Processor for Speech & Text Commands
+        fun executeUserQuery(query: String) {
+            statusText.text = "🧠 AI Thinking..."
+            responseText.text = "Q: \"$query\"\n\nThinking..."
+            
             serviceScope.launch {
                 val apiConfig = getStoredApiConfig()
                 val assistantConfig = getStoredAssistantConfig()
 
-                // Fast local check first (<20ms response)
+                // Fast local check first
                 val localRes = GeminiJarvisService.parseLocalCommand(query, assistantConfig)
                 if (localRes.command != JarvisCommand.None) {
                     statusText.text = "⚡ Executing..."
                     PhoneController.executeJarvisCommand(this@JarvisFloatingOverlayService, localRes.command)
-                    statusText.text = "🔊 Responding..."
+                    statusText.text = "🔊 Speaking..."
+                    responseText.text = "Q: \"$query\"\n\n${localRes.replyText}"
                     speechManager?.speak(localRes.replyText) {
-                        mainHandler.post { statusText.text = "JARVIS // IDLE" }
+                        mainHandler.post { statusText.text = "JARVIS AI // ONLINE" }
                     }
                     return@launch
                 }
 
-                // Full AI Brain query with user's configured model
+                // Call Gemini API (Free tier model)
                 val response = withContext(Dispatchers.IO) {
                     GeminiJarvisService.processUserMessage(
                         userMessage = query,
@@ -289,29 +337,37 @@ class JarvisFloatingOverlayService : Service() {
                 }
 
                 statusText.text = "⚡ Executing..."
-                // Execute any phone action or screen automation
                 if (response.command != JarvisCommand.None) {
                     PhoneController.executeJarvisCommand(this@JarvisFloatingOverlayService, response.command)
                 }
 
-                // Speak voice answer without delay
-                statusText.text = "🔊 Responding..."
+                statusText.text = "🔊 Speaking..."
+                responseText.text = "Q: \"$query\"\n\n${response.replyText}"
                 speechManager?.speak(response.replyText) {
-                    mainHandler.post { statusText.text = "JARVIS // ONLINE" }
+                    mainHandler.post { statusText.text = "JARVIS AI // ONLINE" }
                 }
             }
         }
 
-        val micBtn = createPillButton("🎙️ Voice", 0xFF00527C.toInt()) {
+        // Action Buttons Row 1 (Voice Mic, Type, Scroll Down, Scroll Up)
+        val row1 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dpToPx(4))
+        }
+
+        val micBtn = createPillButton("🎙️ Voice", 0xFF006994.toInt(), 0xFF00E5FF.toInt()) {
             speechManager?.stopSpeaking()
             statusText.text = "🎙️ Listening..."
+            responseText.text = "Listening... Speak in English or Hindi now."
             speechManager?.startListening(
-                onResult = { recognized ->
-                    processFloatingSpeechInput(recognized)
+                onResult = { query ->
+                    executeUserQuery(query)
                 },
-                onError = {
+                onError = { err ->
                     mainHandler.post {
-                        statusText.text = "JARVIS // ONLINE"
+                        statusText.text = "JARVIS AI // ONLINE"
+                        responseText.text = "Voice error: $err. Tap 🎙️ to try again."
                     }
                 }
             )
@@ -319,14 +375,12 @@ class JarvisFloatingOverlayService : Service() {
 
         val typeBtn = createPillButton("✍️ Type") {
             val phrases = listOf(
-                "Main raste mein hoon.",
-                "Yes, confirmed.",
-                "Thanks, received.",
-                "Call me later.",
-                "Send details please."
+                "Hello! How can I assist you today?",
+                "Main raste mein hoon, thodi der mein baat karte hain.",
+                "Thank you, received.",
+                "Yes, confirmed."
             )
-            val selected = phrases.random()
-            val res = PhoneController.typeTextOnScreen(this, selected)
+            val res = PhoneController.typeTextOnScreen(this, phrases.random())
             Toast.makeText(this, res.message, Toast.LENGTH_SHORT).show()
         }
 
@@ -338,19 +392,31 @@ class JarvisFloatingOverlayService : Service() {
             PhoneController.performScroll(this, "up")
         }
 
-        val homeBtn = createPillButton("🏠") {
+        row1.addView(micBtn)
+        row1.addView(typeBtn)
+        row1.addView(scrollDownBtn)
+        row1.addView(scrollUpBtn)
+        hudDeck.addView(row1)
+
+        // Action Buttons Row 2 (Home, Back, Screenshot, Torch, App)
+        val row2 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val homeBtn = createPillButton("🏠 Home") {
             PhoneController.performGlobalAction(this, JarvisAccessibilityService.GlobalActionType.HOME, "Home")
         }
 
-        val backBtn = createPillButton("◀") {
+        val backBtn = createPillButton("◀ Back") {
             PhoneController.performGlobalAction(this, JarvisAccessibilityService.GlobalActionType.BACK, "Back")
         }
 
-        val screenBtn = createPillButton("📸") {
+        val screenshotBtn = createPillButton("📸 Shot") {
             PhoneController.performGlobalAction(this, JarvisAccessibilityService.GlobalActionType.TAKE_SCREENSHOT, "Screenshot")
         }
 
-        val openAppBtn = createPillButton("📱 App") {
+        val openAppBtn = createPillButton("📱 App", 0xFF0D47A1.toInt()) {
             val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -358,58 +424,72 @@ class JarvisFloatingOverlayService : Service() {
             }
         }
 
-        val closeBtn = createPillButton("✕", 0xFF661010.toInt()) {
+        row2.addView(homeBtn)
+        row2.addView(backBtn)
+        row2.addView(screenshotBtn)
+        row2.addView(openAppBtn)
+        hudDeck.addView(row2)
+
+        rootLayout.addView(miniBadge)
+        rootLayout.addView(hudDeck)
+
+        // ============================================================
+        // 3. SEAMLESS DRAGGING & MINIMIZE/EXPAND LOGIC
+        // ============================================================
+        fun toggleExpand(expand: Boolean) {
+            isExpanded = expand
+            miniBadge.visibility = if (isExpanded) View.GONE else View.VISIBLE
+            hudDeck.visibility = if (isExpanded) View.VISIBLE else View.GONE
+            try {
+                windowManager?.updateViewLayout(rootLayout, params)
+            } catch (_: Exception) {}
+        }
+
+        minimizeBtn.setOnClickListener {
+            toggleExpand(false)
+        }
+
+        closeBtnTop.setOnClickListener {
             stopSelf()
         }
 
-        row1.addView(micBtn)
-        row1.addView(typeBtn)
-        row1.addView(scrollDownBtn)
-        row1.addView(scrollUpBtn)
-        row1.addView(homeBtn)
-
-        row2.addView(backBtn)
-        row2.addView(screenBtn)
-        row2.addView(openAppBtn)
-        row2.addView(closeBtn)
-
-        actionStrip.addView(row1)
-        actionStrip.addView(row2)
-        container.addView(actionStrip)
-
-        // Drag & minimize gestures
+        // Dragging handler on Header & Mini Badge
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
-        var isMoving = false
+        var isDragging = false
+        var downTime = 0L
 
-        headerRow.setOnTouchListener { _, event ->
+        val dragTouchListener = View.OnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = params.x
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
-                    isMoving = false
+                    isDragging = false
+                    downTime = System.currentTimeMillis()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
-                    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-                        isMoving = true
+                    if (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop) {
+                        isDragging = true
                         params.x = initialX + dx
                         params.y = initialY + dy
-                        windowManager?.updateViewLayout(container, params)
+                        windowManager?.updateViewLayout(rootLayout, params)
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isMoving) {
-                        isExpanded = !isExpanded
-                        actionStrip.visibility = if (isExpanded) View.VISIBLE else View.GONE
-                        minMaxBtn.text = if (isExpanded) "◀▶" else "▲"
+                    val duration = System.currentTimeMillis() - downTime
+                    if (!isDragging && duration < 350) {
+                        // Click detected!
+                        if (!isExpanded) {
+                            toggleExpand(true)
+                        }
                     }
                     true
                 }
@@ -417,14 +497,65 @@ class JarvisFloatingOverlayService : Service() {
             }
         }
 
-        minMaxBtn.setOnClickListener {
-            isExpanded = !isExpanded
-            actionStrip.visibility = if (isExpanded) View.VISIBLE else View.GONE
-            minMaxBtn.text = if (isExpanded) "◀▶" else "▲"
-        }
+        headerRow.setOnTouchListener(dragTouchListener)
+        miniBadge.setOnTouchListener(dragTouchListener)
 
-        floatingView = container
-        windowManager?.addView(container, params)
+        floatingView = rootLayout
+        windowManager?.addView(rootLayout, params)
+    }
+
+    private fun setupBackgroundWakeWord() {
+        val assistantConfig = getStoredAssistantConfig()
+        wakeWordEngine?.setSelectedKeyword(assistantConfig.wakeWord)
+        wakeWordEngine?.setWakeWordEnabled(assistantConfig.isWakeWordEnabled)
+        wakeWordEngine?.setWakeListener { keyword ->
+            mainHandler.post {
+                speechManager?.stopSpeaking()
+                val statusText = floatingView?.findViewWithTag<TextView>("status_text")
+                val responseText = floatingView?.findViewWithTag<TextView>("response_text")
+                statusText?.text = "⚡ Wake ($keyword)..."
+                responseText?.text = "Wake word detected ($keyword). Listening..."
+
+                speechManager?.startListening(
+                    onResult = { query ->
+                        serviceScope.launch {
+                            statusText?.text = "🧠 AI Thinking..."
+                            responseText?.text = "Q: \"$query\"\n\nProcessing..."
+                            val apiConfig = getStoredApiConfig()
+                            val config = getStoredAssistantConfig()
+
+                            val localRes = GeminiJarvisService.parseLocalCommand(query, config)
+                            if (localRes.command != JarvisCommand.None) {
+                                PhoneController.executeJarvisCommand(this@JarvisFloatingOverlayService, localRes.command)
+                                responseText?.text = "Q: \"$query\"\n\n${localRes.replyText}"
+                                speechManager?.speak(localRes.replyText)
+                                statusText?.text = "JARVIS AI // ONLINE"
+                                return@launch
+                            }
+
+                            val response = withContext(Dispatchers.IO) {
+                                GeminiJarvisService.processUserMessage(
+                                    userMessage = query,
+                                    apiConfig = apiConfig,
+                                    assistantConfig = config,
+                                    conversationHistory = emptyList()
+                                )
+                            }
+                            if (response.command != JarvisCommand.None) {
+                                PhoneController.executeJarvisCommand(this@JarvisFloatingOverlayService, response.command)
+                            }
+                            responseText?.text = "Q: \"$query\"\n\n${response.replyText}"
+                            speechManager?.speak(response.replyText)
+                            statusText?.text = "JARVIS AI // ONLINE"
+                        }
+                    },
+                    onError = {
+                        statusText?.text = "JARVIS AI // ONLINE"
+                    }
+                )
+            }
+        }
+        wakeWordEngine?.startListening()
     }
 
     private fun dpToPx(dp: Int): Int {
@@ -438,18 +569,14 @@ class JarvisFloatingOverlayService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         isRunning = false
+        wakeWordEngine?.stopListening()
         serviceScope.cancel()
         if (floatingView != null) {
-            windowManager?.removeView(floatingView)
+            try {
+                windowManager?.removeView(floatingView)
+            } catch (_: Exception) {}
             floatingView = null
         }
         speechManager?.destroy()
-    }
-
-    companion object {
-        @Volatile
-        var isRunning: Boolean = false
-
-        fun isFloatingOverlayRunning(): Boolean = isRunning
     }
 }

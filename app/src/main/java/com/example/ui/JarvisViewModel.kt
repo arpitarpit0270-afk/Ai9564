@@ -57,6 +57,7 @@ enum class MessageSender {
 class JarvisViewModel(application: Application) : AndroidViewModel(application) {
 
     val speechManager = JarvisSpeechManager(application)
+    val wakeWordEngine = com.example.data.JarvisWakeWordEngine.getInstance(application)
 
     private val prefs = application.getSharedPreferences("jarvis_ai_prefs", Context.MODE_PRIVATE)
 
@@ -167,6 +168,17 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
         speechManager.applyCharacterPreset(_assistantConfig.value.preset)
         speechManager.setContinuousMode(_assistantConfig.value.isContinuousMode)
 
+        // Configure Wake-Word Listener (Picovoice / Acoustic Detection)
+        wakeWordEngine.setSelectedKeyword(_assistantConfig.value.wakeWord)
+        wakeWordEngine.setWakeWordEnabled(_assistantConfig.value.isWakeWordEnabled)
+        wakeWordEngine.setWakeListener { keyword ->
+            viewModelScope.launch {
+                _statusBannerText.value = "⚡ Wake-Word Detected ($keyword) // Activating..."
+                speechManager.stopSpeaking()
+                toggleVoiceListening()
+            }
+        }
+
         val welcomeMsg = "Good day, ${_assistantConfig.value.userTitle}. ${_assistantConfig.value.name} is online. Full phone accessibility controls, screen auto-typing, continuous hands-free dialogue, and multi-API routing are active. How may I assist you?"
         _messages.value = listOf(
             ChatMessage(
@@ -242,8 +254,23 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun updateGeminiConfig(key: String, model: String) {
-        _apiConfig.value = _apiConfig.value.copy(geminiApiKey = key.trim(), geminiModel = model)
-        prefs.edit().putString("gemini_api_key", key.trim()).putString("gemini_model", model).apply()
+        _apiConfig.value = _apiConfig.value.copy(geminiApiKey = key.trim(), geminiModel = model, selectedEngine = AiEngineType.GEMINI_FREE)
+        prefs.edit()
+            .putString("gemini_api_key", key.trim())
+            .putString("gemini_model", model)
+            .putString("selected_ai_engine", AiEngineType.GEMINI_FREE.name)
+            .apply()
+        _statusBannerText.value = "Gemini Core Configured (${model})"
+    }
+
+    fun testGeminiKey(key: String, model: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            val (success, msg) = GeminiJarvisService.testGeminiConnection(key, model)
+            if (success) {
+                _statusBannerText.value = "Gemini AI Connected Successfully"
+            }
+            onResult(success, msg)
+        }
     }
 
     fun updateOpenAiConfig(key: String, model: String) {
@@ -269,6 +296,14 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
     fun updateOpenRouterConfig(key: String, model: String) {
         _apiConfig.value = _apiConfig.value.copy(openRouterApiKey = key.trim(), openRouterModel = model)
         prefs.edit().putString("openrouter_api_key", key.trim()).putString("openrouter_model", model).apply()
+    }
+
+    fun updatePicovoiceConfig(accessKey: String) {
+        val trimmed = accessKey.trim()
+        _apiConfig.value = _apiConfig.value.copy(picovoiceAccessKey = trimmed)
+        prefs.edit().putString("picovoice_access_key", trimmed).apply()
+        wakeWordEngine.setPicovoiceAccessKey(trimmed)
+        _statusBannerText.value = "Picovoice Porcupine AccessKey Configured"
     }
 
     fun updateCustomEndpointConfig(baseUrl: String, key: String, model: String) {
@@ -326,6 +361,8 @@ class JarvisViewModel(application: Application) : AndroidViewModel(application) 
             .putString("wake_word", cleanWord)
             .putBoolean("wake_word_enabled", enabled)
             .apply()
+        wakeWordEngine.setSelectedKeyword(cleanWord)
+        wakeWordEngine.setWakeWordEnabled(enabled)
     }
 
     fun toggleContinuousMode(enabled: Boolean) {

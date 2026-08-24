@@ -80,16 +80,16 @@ data class JarvisResponse(
     val replyText: String,
     val command: JarvisCommand,
     val isFromGemini: Boolean,
-    val providerUsed: String = "Neural Core",
+    val providerUsed: String = "Gemini Neural Core",
     val createdFileInfo: CreatedDeviceInfo? = null
 )
 
 object GeminiJarvisService {
 
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
     fun buildSystemPrompt(assistantConfig: AssistantConfig): String {
@@ -102,34 +102,37 @@ object GeminiJarvisService {
         }
 
         return """
-You are $name, an autonomous AI assistant with full Android phone control, universal screen auto-typing, live screen & camera perception, and device automation.
-Address the user as '$title'.
+You are $name, a world-class, ultra-intelligent autonomous AI assistant like ChatGPT, Google Assistant, and Gemini, with advanced conversation capabilities and full Android phone automation.
+Address the user respectfully as '$title' (or warm conversational tone).
 Assistant Personality & Tone: $naturePrompt
 
-Language & Conversational Intelligence:
-You understand English, Hindi, and Hinglish fluently (e.g., "type karo", "likh do", "home screen pe jao", "back jao", "notification kholo", "screenshot lo", "phone lock karo", "whatsapp pe message bhejo", "torch jalao", "gaana chalao", "kya haal hai", "screen pe click karo", "screen dekho", "live camera scanner kholo").
+BILINGUAL & CONVERSATIONAL INTELLIGENCE (ENGLISH + HINDI / HINGLISH):
+- You are fully fluent in both English and Hindi/Hinglish.
+- If the user speaks or writes in English, reply in natural, polished, intelligent, and helpful English.
+- If the user speaks or writes in Hindi or Hinglish (e.g. "kya haal hai", "yeh kaise hota hai", "torch jalao"), reply in natural Hindi/Hinglish.
+- You have vast knowledge across all fields: science, history, coding, mathematics, technology, recipes, jokes, storytelling, creative writing, current concepts, explanations, and thoughtful dialogue.
+- Answer user questions thoroughly, clearly, and conversationally just like ChatGPT or Google Assistant!
 
-CRITICAL DIRECT CONVERSATION & KNOWLEDGE RULE:
-1. When the user asks questions, seeks advice, engages in dialogue, asks for coding help, math, science, translation, or general information (in Hindi, English, or Hinglish):
-   - ALWAYS ANSWER DIRECTLY and conversationally using your internal deep AI knowledge!
-   - NEVER open Google Search ([ACTION:GOOGLE_SEARCH:]) unless the user explicitly commands: "search this on Google" or "Google par search karo".
-2. When the user asks to perform an action on their phone, prepend the exact [ACTION:...] tag.
+PHONE CONTROL & AUTOMATION RULES:
+- When the user asks you to perform an action on their phone (e.g., flashlight, call, message, open apps, scroll, type, screenshot, alarm, timer, camera), you MUST include the corresponding [ACTION:...] tag at the start of your response, followed by a helpful conversational confirmation.
+- When the user asks general questions or has a normal conversation (e.g. "What is quantum computing?", "Who is Albert Einstein?", "How are you?", "Write a Python script for binary search"), DO NOT include any device action tag (or use [ACTION:NONE:]). Just provide your brilliant, helpful, and direct answer!
+- NEVER use [ACTION:GOOGLE_SEARCH:] unless the user explicitly says "search this on Google" or "Google par search karo". For all questions, answer directly with your internal AI brain!
 
 List of Valid ACTION Tags:
-- [ACTION:TYPE_TEXT:TEXT_TO_TYPE] (Types into whatever app or input box is active on screen)
-- [ACTION:CLICK_VIEW:TARGET_BUTTON_OR_TEXT] (Clicks button/view on screen by text or ID, e.g. 'Send', 'Search', 'Submit', 'Login', 'Follow')
-- [ACTION:CLICK_COORDS:X|Y] (Taps exact coordinate on screen, e.g. 500|1000)
+- [ACTION:TYPE_TEXT:TEXT_TO_TYPE] (Auto-types text into active app/box on screen via Accessibility)
+- [ACTION:CLICK_VIEW:TARGET_BUTTON_OR_TEXT] (Clicks a button or text on screen)
+- [ACTION:CLICK_COORDS:X|Y] (Taps exact coordinate on screen)
 - [ACTION:SCROLL:DIRECTION] (down, up, left, right)
-- [ACTION:ANALYZE_SCREEN:PROMPT] (Dumps and analyzes what is currently displayed on device screen)
-- [ACTION:LIVE_VISION:] (Opens live camera optical HUD scanner)
+- [ACTION:ANALYZE_SCREEN:PROMPT] (Analyzes the device screen content)
+- [ACTION:LIVE_VISION:] (Opens live camera HUD scanner)
 - [ACTION:GLOBAL_HOME:] (Press Home)
 - [ACTION:GLOBAL_BACK:] (Press Back)
-- [ACTION:GLOBAL_RECENTS:] (Open Recent Apps Overview)
-- [ACTION:GLOBAL_NOTIFICATIONS:] (Pull down Notification Shade)
-- [ACTION:GLOBAL_QUICK_SETTINGS:] (Open Quick Settings Panel)
-- [ACTION:GLOBAL_LOCK:] (Lock the device screen)
-- [ACTION:GLOBAL_SCREENSHOT:] (Capture a screenshot)
-- [ACTION:ACCESSIBILITY_SETTINGS:] (Open Accessibility Settings)
+- [ACTION:GLOBAL_RECENTS:] (Open Recent Apps)
+- [ACTION:GLOBAL_NOTIFICATIONS:] (Pull down notifications)
+- [ACTION:GLOBAL_QUICK_SETTINGS:] (Open quick settings)
+- [ACTION:GLOBAL_LOCK:] (Lock device screen)
+- [ACTION:GLOBAL_SCREENSHOT:] (Capture screenshot)
+- [ACTION:ACCESSIBILITY_SETTINGS:] (Open Accessibility settings)
 
 - [ACTION:WHATSAPP_OPEN:]
 - [ACTION:WHATSAPP_MSG:PHONE_NUMBER|MESSAGE_TEXT]
@@ -161,15 +164,13 @@ List of Valid ACTION Tags:
 - [ACTION:TIMER:SECONDS|LABEL]
 - [ACTION:SETTINGS:TYPE] (wifi, bluetooth, sound, display, battery, apps, accessibility, main)
 - [ACTION:MAPS:DESTINATION_NAME]
-- [ACTION:GOOGLE_SEARCH:QUERY] (ONLY when explicitly instructed to search on google)
 - [ACTION:CALCULATOR:]
 - [ACTION:BATTERY:]
 - [ACTION:TELEMETRY:]
-- [ACTION:CREATE_FILE:FILE_NAME|FILE_CONTENT] (Creates a file directly on user's device and writes the code/content into it)
+- [ACTION:CREATE_FILE:FILE_NAME|FILE_CONTENT]
 - [ACTION:NONE:]
 
-If the user asks to create a file or generate code for a file, use the [ACTION:CREATE_FILE:fileName|code_content] tag so it is saved directly to their phone.
-After the action tag, provide your natural, engaging, and in-character response. Keep it concise (1-2 sentences) for immediate zero-delay TTS speech playback.
+Format: Put the [ACTION:...] tag (if any) first, then your spoken response. Keep spoken response engaging and conversational.
 """.trimIndent()
     }
 
@@ -200,99 +201,46 @@ After the action tag, provide your natural, engaging, and in-character response.
             return@withContext parseLocalCommand(effectiveMessage, assistantConfig)
         }
 
-        // 2. Route based on selected engine
-        when (apiConfig.selectedEngine) {
-            AiEngineType.GEMINI_FREE -> {
-                val key = resolveGeminiKey(apiConfig.geminiApiKey)
-                if (key.isNotEmpty()) {
-                    val res = callGeminiApi(apiConfig.geminiModel, effectiveMessage, key, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Gemini ${apiConfig.geminiModel}", assistantConfig)
-                }
-            }
-            AiEngineType.OPENAI_GPT -> {
-                val key = apiConfig.openAiApiKey.trim()
-                if (key.isNotEmpty()) {
-                    val res = callOpenAiCompatibleApi("https://api.openai.com/v1/chat/completions", apiConfig.openAiModel, effectiveMessage, key, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "OpenAI ${apiConfig.openAiModel}", assistantConfig)
-                }
-            }
-            AiEngineType.GROQ -> {
-                val key = apiConfig.groqApiKey.trim()
-                if (key.isNotEmpty()) {
-                    val res = callOpenAiCompatibleApi("https://api.groq.com/openai/v1/chat/completions", apiConfig.groqModel, effectiveMessage, key, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Groq ${apiConfig.groqModel}", assistantConfig)
-                }
-            }
-            AiEngineType.DEEPSEEK -> {
-                val key = apiConfig.deepSeekApiKey.trim()
-                if (key.isNotEmpty()) {
-                    val res = callOpenAiCompatibleApi("https://api.deepseek.com/chat/completions", apiConfig.deepSeekModel, effectiveMessage, key, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "DeepSeek ${apiConfig.deepSeekModel}", assistantConfig)
-                }
-            }
-            AiEngineType.CLAUDE -> {
-                val key = apiConfig.claudeApiKey.trim()
-                if (key.isNotEmpty()) {
-                    val res = callClaudeApi(apiConfig.claudeModel, effectiveMessage, key, systemPrompt, conversationHistory)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Claude ${apiConfig.claudeModel}", assistantConfig)
-                }
-            }
-            AiEngineType.OPENROUTER -> {
-                val key = apiConfig.openRouterApiKey.trim()
-                if (key.isNotEmpty()) {
-                    val res = callOpenAiCompatibleApi("https://openrouter.ai/api/v1/chat/completions", apiConfig.openRouterModel, effectiveMessage, key, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "OpenRouter ${apiConfig.openRouterModel}", assistantConfig)
-                }
-            }
-            AiEngineType.CUSTOM_ENDPOINT -> {
-                val baseUrl = apiConfig.customApiBaseUrl.trim().removeSuffix("/")
-                val endpoint = if (baseUrl.endsWith("/chat/completions")) baseUrl else "$baseUrl/chat/completions"
-                val res = callOpenAiCompatibleApi(endpoint, apiConfig.customModelName, effectiveMessage, apiConfig.customApiKey.trim(), systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Custom (${apiConfig.customModelName})", assistantConfig)
-            }
-            AiEngineType.AUTO_HYBRID -> {
-                // Auto-Hybrid: If image attached, prioritize Gemini Vision or OpenAI
-                if (effectiveImageBase64 != null) {
-                    val geminiKey = resolveGeminiKey(apiConfig.geminiApiKey)
-                    if (geminiKey.isNotEmpty()) {
-                        val res = callGeminiApi("gemini-2.5-flash", effectiveMessage, geminiKey, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                            ?: callGeminiApi("gemini-2.0-flash", effectiveMessage, geminiKey, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                        if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Gemini Vision", assistantConfig)
-                    }
-                    if (apiConfig.openAiApiKey.isNotBlank()) {
-                        val res = callOpenAiCompatibleApi("https://api.openai.com/v1/chat/completions", apiConfig.openAiModel, effectiveMessage, apiConfig.openAiApiKey.trim(), systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                        if (res != null) return@withContext parseAiOutput(res, cleanMessage, "OpenAI Vision", assistantConfig)
-                    }
-                }
+        // 2. Resolve Gemini API Key (User key from SharedPreferences or BuildConfig)
+        val geminiKey = resolveGeminiKey(apiConfig.geminiApiKey)
+        if (geminiKey.isNotEmpty()) {
+            val candidateModels = listOf(
+                apiConfig.geminiModel.ifBlank { "gemini-2.5-flash" },
+                "gemini-2.5-flash",
+                "gemini-3.5-flash",
+                "gemini-flash-latest"
+            ).distinct()
 
-                if (apiConfig.groqApiKey.isNotBlank()) {
-                    val res = callOpenAiCompatibleApi("https://api.groq.com/openai/v1/chat/completions", apiConfig.groqModel, effectiveMessage, apiConfig.groqApiKey.trim(), systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Groq Lightning", assistantConfig)
-                }
-
-                val geminiKey = resolveGeminiKey(apiConfig.geminiApiKey)
-                if (geminiKey.isNotEmpty()) {
-                    for (model in listOf("gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash")) {
-                        val res = callGeminiApi(model, effectiveMessage, geminiKey, systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                        if (res != null) return@withContext parseAiOutput(res, cleanMessage, "Gemini ($model)", assistantConfig)
-                    }
-                }
-
-                if (apiConfig.openAiApiKey.isNotBlank()) {
-                    val res = callOpenAiCompatibleApi("https://api.openai.com/v1/chat/completions", apiConfig.openAiModel, effectiveMessage, apiConfig.openAiApiKey.trim(), systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "OpenAI", assistantConfig)
-                }
-
-                if (apiConfig.deepSeekApiKey.isNotBlank()) {
-                    val res = callOpenAiCompatibleApi("https://api.deepseek.com/chat/completions", apiConfig.deepSeekModel, effectiveMessage, apiConfig.deepSeekApiKey.trim(), systemPrompt, conversationHistory, effectiveImageBase64, effectiveImageMime)
-                    if (res != null) return@withContext parseAiOutput(res, cleanMessage, "DeepSeek", assistantConfig)
+            for (model in candidateModels) {
+                val res = callGeminiApi(
+                    modelName = model,
+                    userMessage = effectiveMessage,
+                    apiKey = geminiKey,
+                    systemPrompt = systemPrompt,
+                    conversationHistory = conversationHistory,
+                    imageBase64 = effectiveImageBase64,
+                    imageMimeType = effectiveImageMime
+                )
+                if (res != null) {
+                    return@withContext parseAiOutput(res, cleanMessage, "Gemini ($model)", assistantConfig)
                 }
             }
-            else -> {}
         }
 
         // Fallback: Ultra-fast Zero-Latency Local Intelligence Engine
         return@withContext parseLocalCommand(cleanMessage, assistantConfig)
+    }
+
+    suspend fun testGeminiConnection(apiKey: String, model: String = "gemini-2.5-flash"): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val key = resolveGeminiKey(apiKey)
+        if (key.isBlank()) return@withContext Pair(false, "API Key is empty. Please enter your Google Gemini API Key.")
+        val prompt = "Say 'J.A.R.V.I.S. Gemini Core Online' in 5 words."
+        val result = callGeminiApi(model, prompt, key, "You are Jarvis AI.", emptyList())
+        if (result != null) {
+            Pair(true, "✅ Connected! Gemini responded: \"${result.trim()}\"")
+        } else {
+            Pair(false, "❌ Connection failed. Please check your Gemini API key and internet connection.")
+        }
     }
 
     private fun resolveGeminiKey(customKey: String): String {
@@ -308,141 +256,6 @@ After the action tag, provide your natural, engaging, and in-character response.
         if (wakeWord.isBlank()) return trimmed
         val regex = Regex("""(?i)^(hey\s+)?${Regex.escape(wakeWord)}[,!\s]*""")
         return trimmed.replace(regex, "").trim().ifBlank { trimmed }
-    }
-
-    private fun callOpenAiCompatibleApi(
-        endpointUrl: String,
-        modelName: String,
-        userMessage: String,
-        apiKey: String,
-        systemPrompt: String,
-        conversationHistory: List<Pair<String, String>>,
-        imageBase64: String? = null,
-        imageMimeType: String = "image/jpeg"
-    ): String? {
-        try {
-            val rootJson = JSONObject()
-            rootJson.put("model", modelName)
-
-            val messages = JSONArray()
-            messages.put(JSONObject().apply {
-                put("role", "system")
-                put("content", systemPrompt)
-            })
-
-            conversationHistory.takeLast(4).forEach { (user, ai) ->
-                messages.put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", user)
-                })
-                messages.put(JSONObject().apply {
-                    put("role", "assistant")
-                    put("content", ai)
-                })
-            }
-
-            if (imageBase64 != null) {
-                val contentArray = JSONArray()
-                contentArray.put(JSONObject().apply {
-                    put("type", "text")
-                    put("text", userMessage)
-                })
-                contentArray.put(JSONObject().apply {
-                    put("type", "image_url")
-                    put("image_url", JSONObject().apply {
-                        put("url", "data:$imageMimeType;base64,$imageBase64")
-                    })
-                })
-                messages.put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", contentArray)
-                })
-            } else {
-                messages.put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", userMessage)
-                })
-            }
-
-            rootJson.put("messages", messages)
-            rootJson.put("temperature", 0.6)
-            rootJson.put("max_tokens", 450)
-
-            val requestBody = rootJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val requestBuilder = Request.Builder()
-                .url(endpointUrl)
-                .post(requestBody)
-
-            if (apiKey.isNotBlank()) {
-                requestBuilder.addHeader("Authorization", "Bearer $apiKey")
-            }
-
-            val response = okHttpClient.newCall(requestBuilder.build()).execute()
-            val responseString = response.body?.string() ?: return null
-
-            if (!response.isSuccessful) return null
-
-            val jsonObj = JSONObject(responseString)
-            val choices = jsonObj.optJSONArray("choices") ?: return null
-            if (choices.length() > 0) {
-                val first = choices.getJSONObject(0)
-                val msg = first.optJSONObject("message")
-                return msg?.optString("content")
-            }
-        } catch (_: Exception) {}
-        return null
-    }
-
-    private fun callClaudeApi(
-        modelName: String,
-        userMessage: String,
-        apiKey: String,
-        systemPrompt: String,
-        conversationHistory: List<Pair<String, String>>
-    ): String? {
-        try {
-            val rootJson = JSONObject()
-            rootJson.put("model", modelName)
-            rootJson.put("system", systemPrompt)
-            rootJson.put("max_tokens", 450)
-
-            val messages = JSONArray()
-            conversationHistory.takeLast(4).forEach { (user, ai) ->
-                messages.put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", user)
-                })
-                messages.put(JSONObject().apply {
-                    put("role", "assistant")
-                    put("content", ai)
-                })
-            }
-            messages.put(JSONObject().apply {
-                put("role", "user")
-                put("content", userMessage)
-            })
-            rootJson.put("messages", messages)
-
-            val requestBody = rootJson.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val request = Request.Builder()
-                .url("https://api.anthropic.com/v1/messages")
-                .addHeader("x-api-key", apiKey)
-                .addHeader("anthropic-version", "2023-06-01")
-                .post(requestBody)
-                .build()
-
-            val response = okHttpClient.newCall(request).execute()
-            val responseString = response.body?.string() ?: return null
-
-            if (!response.isSuccessful) return null
-
-            val jsonObj = JSONObject(responseString)
-            val contentArr = jsonObj.optJSONArray("content") ?: return null
-            if (contentArr.length() > 0) {
-                return contentArr.getJSONObject(0).optString("text")
-            }
-        } catch (_: Exception) {}
-        return null
     }
 
     private fun callGeminiApi(
@@ -468,7 +281,7 @@ After the action tag, provide your natural, engaging, and in-character response.
             // Contents array
             val contentsArray = JSONArray()
 
-            conversationHistory.takeLast(4).forEach { (user, ai) ->
+            conversationHistory.takeLast(6).forEach { (user, ai) ->
                 contentsArray.put(JSONObject().apply {
                     put("role", "user")
                     put("parts", JSONArray().apply {
@@ -503,9 +316,9 @@ After the action tag, provide your natural, engaging, and in-character response.
             rootJson.put("contents", contentsArray)
 
             val genConfig = JSONObject().apply {
-                put("temperature", 0.6)
-                put("topP", 0.9)
-                put("maxOutputTokens", 500)
+                put("temperature", 0.7)
+                put("topP", 0.95)
+                put("maxOutputTokens", 800)
             }
             rootJson.put("generationConfig", genConfig)
 
@@ -921,20 +734,20 @@ if __name__ == "__main__":
                 JarvisResponse("All $name subsystems operational and ready for your command, $title.", JarvisCommand.DeviceTelemetryReport, false, "Instant Local Engine")
             }
 
-            // Greetings
-            lower.contains("hello") || lower.contains("hi") || lower.contains("hey") || lower.contains("namaste") || lower.contains("kaisa hai") || lower.contains("kaise ho") -> {
-                JarvisResponse("Good day, $title. $name is online, full accessibility controls enabled, and awaiting your command.", JarvisCommand.None, false, "Instant Local Engine")
+            // Greetings & Conversational Chit-chat
+            lower.contains("hello") || lower.contains("hi") || lower.contains("hey") || lower.contains("namaste") || lower.contains("kaisa hai") || lower.contains("kaise ho") || lower.contains("how are you") -> {
+                JarvisResponse("Good day, $title! I am $name, your personal AI assistant. I can chat with you in English and Hindi, answer any general question, and control your phone. How can I help you right now?", JarvisCommand.None, false, "Instant Local Engine")
             }
             lower.contains("who are you") || lower.contains("what can you do") || lower.contains("tum kaun ho") || lower.contains("kya kar sakte ho") -> {
-                JarvisResponse("I am $name, your autonomous personal AI assistant. With full Accessibility permissions, I can type into any app on your screen, click buttons, press Home/Back/Recents, take screenshots, lock your device, and execute any phone command with zero delay.", JarvisCommand.None, false, "Instant Local Engine")
+                JarvisResponse("I am $name, your autonomous AI assistant powered by Google Gemini. You can ask me any question like ChatGPT, or tell me to perform phone tasks like turning on the flashlight, calling contacts, typing on screen, scrolling, opening apps, or taking screenshots.", JarvisCommand.None, false, "Instant Local Engine")
             }
             lower.contains("thank you") || lower.contains("thanks") || lower.contains("shukriya") || lower.contains("dhanyawad") -> {
-                JarvisResponse("Always at your service, $title.", JarvisCommand.None, false, "Instant Local Engine")
+                JarvisResponse("Always at your service, $title. Feel free to ask me anything anytime.", JarvisCommand.None, false, "Instant Local Engine")
             }
 
             else -> {
                 JarvisResponse(
-                    replyText = "Command acknowledged, $title. I am processing \"$text\". How may I assist you further?",
+                    replyText = "I received: \"$text\". To enable full conversational answers like Google Assistant / ChatGPT on any topic, enter your Gemini API Key in the API tab!",
                     command = JarvisCommand.None,
                     isFromGemini = false,
                     providerUsed = "Instant Local Engine"

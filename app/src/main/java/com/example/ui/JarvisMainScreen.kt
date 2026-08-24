@@ -384,6 +384,8 @@ fun JarvisMainScreen(
                         apiConfig = apiConfig,
                         onSelectEngine = { viewModel.setAiEngine(it) },
                         onUpdateGemini = { key, model -> viewModel.updateGeminiConfig(key, model) },
+                        onTestGemini = { key, model, callback -> viewModel.testGeminiKey(key, model, callback) },
+                        onUpdatePicovoice = { key -> viewModel.updatePicovoiceConfig(key) },
                         onUpdateOpenAi = { key, model -> viewModel.updateOpenAiConfig(key, model) },
                         onUpdateGroq = { key, model -> viewModel.updateGroqConfig(key, model) },
                         onUpdateDeepSeek = { key, model -> viewModel.updateDeepSeekConfig(key, model) },

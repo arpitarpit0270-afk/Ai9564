@@ -227,6 +227,17 @@ class JarvisSpeechManager(private val context: Context) {
         tts?.setPitch(speechPitch)
         tts?.setSpeechRate(speechRate)
 
+        // If text contains Devanagari Hindi characters, speak with Hindi locale if supported
+        val hasHindiDevanagari = text.any { it in '\u0900'..'\u097F' }
+        if (hasHindiDevanagari) {
+            val result = tts?.setLanguage(Locale("hi", "IN"))
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                applyVoiceSettings()
+            }
+        } else {
+            applyVoiceSettings()
+        }
+
         activeCompletionCallback = onComplete
 
         val utteranceId = "JARVIS_${System.currentTimeMillis()}"
@@ -317,6 +328,7 @@ class JarvisSpeechManager(private val context: Context) {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", arrayOf("en-US", "en-IN", "hi-IN"))
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }

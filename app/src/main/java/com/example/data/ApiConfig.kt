@@ -26,6 +26,7 @@ data class MultiApiConfig(
     val claudeModel: String = "claude-3-5-sonnet-20241022",
     val openRouterApiKey: String = "",
     val openRouterModel: String = "google/gemini-2.0-flash-exp:free",
+    val picovoiceAccessKey: String = "",
     val customApiBaseUrl: String = "https://api.openai.com/v1",
     val customApiKey: String = "",
     val customModelName: String = "gpt-4o-mini"

@@ -72,6 +72,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Slider
@@ -661,44 +662,30 @@ fun CharacterVoiceDeck(
 }
 
 // ==============================================================================
-// 2. MULTI-API CONFIGURATION DECK (IN-APP API KEY MANAGER)
+// 2. GOOGLE GEMINI AI CONFIGURATION HUB (PERMANENT ONE-TIME SETUP)
 // ==============================================================================
 
 @Composable
 fun ApiConfigurationDeck(
     apiConfig: MultiApiConfig,
-    onSelectEngine: (AiEngineType) -> Unit,
+    onSelectEngine: (AiEngineType) -> Unit = {},
     onUpdateGemini: (String, String) -> Unit,
-    onUpdateOpenAi: (String, String) -> Unit,
-    onUpdateGroq: (String, String) -> Unit,
-    onUpdateDeepSeek: (String, String) -> Unit,
-    onUpdateClaude: (String, String) -> Unit,
-    onUpdateOpenRouter: (String, String) -> Unit,
-    onUpdateCustomEndpoint: (String, String, String) -> Unit
+    onTestGemini: ((String, String, (Boolean, String) -> Unit) -> Unit)? = null,
+    onUpdatePicovoice: (String) -> Unit = {},
+    onUpdateOpenAi: (String, String) -> Unit = { _, _ -> },
+    onUpdateGroq: (String, String) -> Unit = { _, _ -> },
+    onUpdateDeepSeek: (String, String) -> Unit = { _, _ -> },
+    onUpdateClaude: (String, String) -> Unit = { _, _ -> },
+    onUpdateOpenRouter: (String, String) -> Unit = { _, _ -> },
+    onUpdateCustomEndpoint: (String, String, String) -> Unit = { _, _, _ -> }
 ) {
     var geminiKey by remember(apiConfig.geminiApiKey) { mutableStateOf(apiConfig.geminiApiKey) }
-    var geminiModel by remember(apiConfig.geminiModel) { mutableStateOf(apiConfig.geminiModel) }
-
-    var openAiKey by remember(apiConfig.openAiApiKey) { mutableStateOf(apiConfig.openAiApiKey) }
-    var openAiModel by remember(apiConfig.openAiModel) { mutableStateOf(apiConfig.openAiModel) }
-
-    var groqKey by remember(apiConfig.groqApiKey) { mutableStateOf(apiConfig.groqApiKey) }
-    var groqModel by remember(apiConfig.groqModel) { mutableStateOf(apiConfig.groqModel) }
-
-    var deepSeekKey by remember(apiConfig.deepSeekApiKey) { mutableStateOf(apiConfig.deepSeekApiKey) }
-    var deepSeekModel by remember(apiConfig.deepSeekModel) { mutableStateOf(apiConfig.deepSeekModel) }
-
-    var claudeKey by remember(apiConfig.claudeApiKey) { mutableStateOf(apiConfig.claudeApiKey) }
-    var claudeModel by remember(apiConfig.claudeModel) { mutableStateOf(apiConfig.claudeModel) }
-
-    var openRouterKey by remember(apiConfig.openRouterApiKey) { mutableStateOf(apiConfig.openRouterApiKey) }
-    var openRouterModel by remember(apiConfig.openRouterModel) { mutableStateOf(apiConfig.openRouterModel) }
-
-    var customBaseUrl by remember(apiConfig.customApiBaseUrl) { mutableStateOf(apiConfig.customApiBaseUrl) }
-    var customKey by remember(apiConfig.customApiKey) { mutableStateOf(apiConfig.customApiKey) }
-    var customModel by remember(apiConfig.customModelName) { mutableStateOf(apiConfig.customModelName) }
-
-    var savedNotification by remember { mutableStateOf<String?>(null) }
+    var geminiModel by remember(apiConfig.geminiModel) { mutableStateOf(apiConfig.geminiModel.ifBlank { "gemini-2.5-flash" }) }
+    var picovoiceKey by remember(apiConfig.picovoiceAccessKey) { mutableStateOf(apiConfig.picovoiceAccessKey) }
+    var showKey by remember { mutableStateOf(false) }
+    var testStatusMessage by remember { mutableStateOf<String?>(null) }
+    var isTesting by remember { mutableStateOf(false) }
+    var savedSuccessBanner by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(
         modifier = Modifier
@@ -718,21 +705,21 @@ fun ApiConfigurationDeck(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Tune,
-                            contentDescription = "API Hub",
+                            contentDescription = "Gemini AI Hub",
                             tint = JarvisCyanBright,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(26.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "MULTI-API CONFIGURATION HUB",
+                                text = "GOOGLE GEMINI AI HUB",
                                 color = JarvisCyanBright,
-                                fontSize = 14.sp,
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
                             )
                             Text(
-                                text = "Add, edit & switch between Gemini, Groq, OpenAI, Claude & DeepSeek APIs",
+                                text = "Conversational intelligence in English & Hindi + Phone automation",
                                 color = TextSecondary,
                                 fontSize = 11.sp
                             )
@@ -742,100 +729,99 @@ fun ApiConfigurationDeck(
             }
         }
 
-        // Active Engine Switcher
+        // Status Card
         item {
-            Text(
-                text = "ACTIVE AI BRAIN SELECTOR",
-                color = JarvisStarkGold,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-        }
-
-        items(AiEngineType.values()) { engine ->
-            val isSelected = apiConfig.selectedEngine == engine
+            val isConfigured = geminiKey.isNotBlank()
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSelectEngine(engine) },
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) JarvisDarkSurfaceVariant else JarvisDarkSurface
+                    containerColor = if (isConfigured) Color(0xFF07241E) else Color(0xFF231808)
                 ),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    if (isSelected) JarvisCyanBright else JarvisBorderGlow
+                    if (isConfigured) JarvisGreen else JarvisOrange
                 )
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = engine.badge,
-                        fontSize = 14.sp
+                        text = if (isConfigured) "🟢" else "🟡",
+                        fontSize = 18.sp
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = engine.displayName,
-                            color = if (isSelected) JarvisCyanBright else TextPrimary,
+                            text = if (isConfigured) "GEMINI AI CORE ACTIVE" else "GEMINI KEY SETUP REQUIRED",
+                            color = if (isConfigured) JarvisGreen else JarvisOrange,
                             fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
-                            text = engine.description,
+                            text = if (isConfigured)
+                                "Model: $geminiModel (Free Tier) • Saved permanently on device"
+                            else
+                                "Enter your Free Gemini API Key below once to unlock full Q&A and Chat.",
                             color = TextSecondary,
-                            fontSize = 10.sp
-                        )
-                    }
-                    if (isSelected) {
-                        Icon(
-                            imageVector = Icons.Default.CheckCircle,
-                            contentDescription = "Active",
-                            tint = JarvisCyanBright,
-                            modifier = Modifier.size(20.dp)
+                            fontSize = 11.sp
                         )
                     }
                 }
             }
         }
 
-        // API Key Section 1: Google Gemini Free API
+        // Primary Gemini Setup Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = JarvisDarkSurface),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisBorderGlow)
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, JarvisBorderCyan)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "✨ GOOGLE GEMINI FREE API KEY",
+                            color = JarvisCyanBright,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                     Text(
-                        text = "GOOGLE GEMINI API",
-                        color = JarvisCyanBright,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "Ultra-low latency Google AI Studio free tier models",
+                        text = "Enter your API key from Google AI Studio. It will be saved permanently.",
                         color = TextSecondary,
-                        fontSize = 10.sp
+                        fontSize = 11.sp
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     OutlinedTextField(
                         value = geminiKey,
                         onValueChange = {
                             geminiKey = it
-                            onUpdateGemini(it, geminiModel)
+                            savedSuccessBanner = null
                         },
                         label = { Text("Gemini API Key (AIzaSy...)", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("gemini_key_input"),
+                        placeholder = { Text("Paste your AIzaSy... key here", fontSize = 11.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("gemini_key_input"),
+                        visualTransformation = if (showKey) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        trailingIcon = {
+                            IconButton(onClick = { showKey = !showKey }) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Toggle Visibility",
+                                    tint = if (showKey) JarvisCyanBright else TextSecondary
+                                )
+                            }
+                        },
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = JarvisCyanBright,
                             unfocusedBorderColor = JarvisBorderGlow,
@@ -845,174 +831,130 @@ fun ApiConfigurationDeck(
                         singleLine = true
                     )
 
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = "SELECT GEMINI MODEL (FREE TIER):",
+                        color = JarvisStarkGold,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
                     Spacer(modifier = Modifier.height(6.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        listOf("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-pro").forEach { model ->
+                        listOf("gemini-2.5-flash", "gemini-3.5-flash", "gemini-flash-latest").forEach { model ->
+                            val isSelected = geminiModel == model
                             Button(
                                 onClick = {
                                     geminiModel = model
-                                    onUpdateGemini(geminiKey, model)
+                                    savedSuccessBanner = null
                                 },
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (geminiModel == model) JarvisCyanBright else JarvisDarkSurfaceVariant
+                                    containerColor = if (isSelected) JarvisCyanBright else JarvisDarkSurfaceVariant
                                 ),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.height(30.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
                             ) {
                                 Text(
                                     text = model.replace("gemini-", ""),
-                                    fontSize = 9.sp,
-                                    color = if (geminiModel == model) Color.Black else TextPrimary
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.Black else TextPrimary,
+                                    maxLines = 1
                                 )
                             }
                         }
                     }
-                }
-            }
-        }
 
-        // API Key Section 2: Groq Lightning LPU
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = JarvisDarkSurface),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisBorderGlow)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "GROQ LIGHTNING LPU API",
-                        color = JarvisOrange,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "Sub-second inference speed for instant voice responses",
-                        color = TextSecondary,
-                        fontSize = 10.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    OutlinedTextField(
-                        value = groqKey,
-                        onValueChange = {
-                            groqKey = it
-                            onUpdateGroq(it, groqModel)
+                    // One-tap Save Button
+                    Button(
+                        onClick = {
+                            onUpdateGemini(geminiKey, geminiModel)
+                            savedSuccessBanner = "✅ Gemini API Key & Model ($geminiModel) Saved Permanently!"
                         },
-                        label = { Text("Groq API Key (gsk_...)", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("groq_key_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = JarvisOrange,
-                            unfocusedBorderColor = JarvisBorderGlow,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = JarvisCyanBright),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("save_gemini_key_button")
                     ) {
-                        listOf("llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768").forEach { model ->
-                            Button(
-                                onClick = {
-                                    groqModel = model
-                                    onUpdateGroq(groqKey, model)
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (groqModel == model) JarvisOrange else JarvisDarkSurfaceVariant
-                                ),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.height(30.dp)
-                            ) {
-                                Text(
-                                    text = model.take(14),
-                                    fontSize = 9.sp,
-                                    color = if (groqModel == model) Color.Black else TextPrimary
-                                )
-                            }
-                        }
+                        Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.Black)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "💾 SAVE & ACTIVATE GEMINI KEY",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
                     }
-                }
-            }
-        }
 
-        // API Key Section 3: OpenAI Official API
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = JarvisDarkSurface),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisBorderGlow)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "OPENAI GPT MATRIX API",
-                        color = JarvisGreen,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "GPT-4o, GPT-4o-mini, o3-mini models",
-                        color = TextSecondary,
-                        fontSize = 10.sp
-                    )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    OutlinedTextField(
-                        value = openAiKey,
-                        onValueChange = {
-                            openAiKey = it
-                            onUpdateOpenAi(it, openAiModel)
+                    // Test Connection Button
+                    OutlinedButton(
+                        onClick = {
+                            if (geminiKey.isBlank()) {
+                                testStatusMessage = "❌ Please enter a Gemini API Key first."
+                                return@OutlinedButton
+                            }
+                            isTesting = true
+                            testStatusMessage = "⚡ Testing connection to Gemini ($geminiModel)..."
+                            onTestGemini?.invoke(geminiKey, geminiModel) { success, msg ->
+                                isTesting = false
+                                testStatusMessage = msg
+                            }
                         },
-                        label = { Text("OpenAI API Key (sk-...)", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("openai_key_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = JarvisGreen,
-                            unfocusedBorderColor = JarvisBorderGlow,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        singleLine = true
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(40.dp)
+                            .border(1.dp, JarvisBorderCyan, RoundedCornerShape(10.dp))
                     ) {
-                        listOf("gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo").forEach { model ->
-                            Button(
-                                onClick = {
-                                    openAiModel = model
-                                    onUpdateOpenAi(openAiKey, model)
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (openAiModel == model) JarvisGreen else JarvisDarkSurfaceVariant
-                                ),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.height(30.dp)
-                            ) {
-                                Text(
-                                    text = model,
-                                    fontSize = 9.sp,
-                                    color = if (openAiModel == model) Color.Black else TextPrimary
-                                )
-                            }
-                        }
+                        Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = JarvisCyanBright)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isTesting) "TESTING..." else "⚡ TEST GEMINI CONNECTION",
+                            color = JarvisCyanBright,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+
+                    // Success or Test status banners
+                    if (savedSuccessBanner != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = savedSuccessBanner!!,
+                            color = JarvisGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (testStatusMessage != null) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = testStatusMessage!!,
+                            color = if (testStatusMessage!!.startsWith("✅")) JarvisGreen else JarvisOrange,
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp
+                        )
                     }
                 }
             }
         }
 
-        // API Key Section 4: DeepSeek API
+        // Picovoice Background Wake-Word API Key Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1022,70 +964,30 @@ fun ApiConfigurationDeck(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "DEEPSEEK AI API",
-                        color = JarvisElectricBlue,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "DeepSeek Chat & DeepSeek Reasoner",
-                        color = TextSecondary,
-                        fontSize = 10.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = deepSeekKey,
-                        onValueChange = {
-                            deepSeekKey = it
-                            onUpdateDeepSeek(it, deepSeekModel)
-                        },
-                        label = { Text("DeepSeek API Key (sk-...)", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("deepseek_key_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = JarvisElectricBlue,
-                            unfocusedBorderColor = JarvisBorderGlow,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        singleLine = true
-                    )
-                }
-            }
-        }
-
-        // API Key Section 5: Anthropic Claude API
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = JarvisDarkSurface),
-                shape = RoundedCornerShape(12.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, JarvisBorderGlow)
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text(
-                        text = "ANTHROPIC CLAUDE API",
+                        text = "🎙️ BACKGROUND WAKE-WORD (PICOVOICE)",
                         color = JarvisStarkGold,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
                     Text(
-                        text = "Claude 3.5 Sonnet & Claude 3 Haiku",
+                        text = "Optional: Ultra-low power wake word detection ('Hey Jarvis') in background",
                         color = TextSecondary,
                         fontSize = 10.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
                     OutlinedTextField(
-                        value = claudeKey,
+                        value = picovoiceKey,
                         onValueChange = {
-                            claudeKey = it
-                            onUpdateClaude(it, claudeModel)
+                            picovoiceKey = it
+                            onUpdatePicovoice(it)
                         },
-                        label = { Text("Claude API Key (sk-ant-...)", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth().testTag("claude_key_input"),
+                        label = { Text("Picovoice AccessKey", fontSize = 11.sp) },
+                        placeholder = { Text("Enter Picovoice Console AccessKey...", fontSize = 10.sp) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("picovoice_key_input"),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = JarvisStarkGold,
                             unfocusedBorderColor = JarvisBorderGlow,
@@ -1098,86 +1000,29 @@ fun ApiConfigurationDeck(
             }
         }
 
-        // API Key Section 6: OpenRouter & Custom OpenAI-Compatible Base URL
+        // How to get free API key guide
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = JarvisDarkSurface),
+                colors = CardDefaults.cardColors(containerColor = JarvisDarkSurfaceVariant),
                 shape = RoundedCornerShape(12.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, JarvisBorderGlow)
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "CUSTOM OPENAI-COMPATIBLE ENDPOINT",
+                        text = "💡 HOW TO GET 100% FREE GEMINI API KEY",
                         color = JarvisCyanBright,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = FontFamily.Monospace
                     )
-                    Text(
-                        text = "Connect any self-hosted proxy, Ollama, LM-Studio or custom server",
-                        color = TextSecondary,
-                        fontSize = 10.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    OutlinedTextField(
-                        value = customBaseUrl,
-                        onValueChange = {
-                            customBaseUrl = it
-                            onUpdateCustomEndpoint(it, customKey, customModel)
-                        },
-                        label = { Text("Base URL (e.g. https://api.openai.com/v1)", fontSize = 11.sp) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = JarvisCyanBright,
-                            unfocusedBorderColor = JarvisBorderGlow,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        singleLine = true
-                    )
-
                     Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = customKey,
-                            onValueChange = {
-                                customKey = it
-                                onUpdateCustomEndpoint(customBaseUrl, it, customModel)
-                            },
-                            label = { Text("API Key", fontSize = 11.sp) },
-                            modifier = Modifier.weight(1.2f),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = JarvisCyanBright,
-                                unfocusedBorderColor = JarvisBorderGlow,
-                                focusedTextColor = TextPrimary,
-                                unfocusedTextColor = TextPrimary
-                            ),
-                            singleLine = true
-                        )
-
-                        OutlinedTextField(
-                            value = customModel,
-                            onValueChange = {
-                                customModel = it
-                                onUpdateCustomEndpoint(customBaseUrl, customKey, it)
-                            },
-                            label = { Text("Model Name", fontSize = 11.sp) },
-                            modifier = Modifier.weight(1f),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = JarvisCyanBright,
-                                unfocusedBorderColor = JarvisBorderGlow,
-                                focusedTextColor = TextPrimary,
-                                unfocusedTextColor = TextPrimary
-                            ),
-                            singleLine = true
-                        )
-                    }
+                    Text(
+                        text = "1. Visit https://aistudio.google.com\n2. Sign in with any Google account\n3. Click 'Get API key' -> 'Create API key'\n4. Copy your key (starts with AIzaSy) and paste it above.\n5. Tap 'SAVE & ACTIVATE GEMINI KEY'. That's it!",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp
+                    )
                 }
             }
         }
